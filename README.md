@@ -238,9 +238,8 @@ payloads/
 - **JSON**: Detailed structured data dengan metadata lengkap
 - **TXT**: Human-readable report
 
-Files disimpan di folder `file/` dengan format:
-- `xss_scan_results_[timestamp].json`
-- `xss_scan_results_[timestamp].txt`
+Files disimpan di current folder dengan format:
+- `xss-<domain>.txt`
 
 ## 🎨 Features Detail
 
@@ -437,8 +436,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 Created with ❤️ by **Security Researchers**
 
-[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?style=for-the-badge&logo=github)](https://github.com/yourusername)
-[![Twitter](https://img.shields.io/badge/Twitter-Follow-1DA1F2?style=for-the-badge&logo=twitter)](https://twitter.com/yourhandle)
+[![GitHub](https://img.shields.io/badge/GitHub-Follow-181717?style=for-the-badge&logo=github)](https://github.com/andknownmaly)
 
 </div>
 
@@ -462,9 +460,7 @@ Created with ❤️ by **Security Researchers**
 
 **Need help or found a bug?**
 
-[![Issues](https://img.shields.io/badge/Report-Issue-red?style=for-the-badge)](https://github.com/yourusername/cupang/issues)
-[![Email](https://img.shields.io/badge/Email-Contact-blue?style=for-the-badge)](mailto:your-email@example.com)
-[![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=for-the-badge&logo=discord)](https://discord.gg/yourserver)
+[![Issues](https://img.shields.io/badge/Report-Issue-red?style=for-the-badge)](https://github.com/andknownmaly/cupang/issues)
 
 </div>
 
