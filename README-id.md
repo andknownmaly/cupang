@@ -145,11 +145,6 @@ python cupang.py https://example.com -H "Cookie: session=abc123"
 python cupang.py https://example.com -H "Authorization: Bearer token123" -H "X-Custom: value"
 ```
 
-### Mode Verbose
-```bash
-python cupang.py https://example.com -v
-```
-
 ### Konfigurasi Lengkap
 ```bash
 python cupang.py https://example.com -a -v --threads 20 --timeout 15
