@@ -246,9 +246,8 @@ payloads/
 - **JSON**: Data terstruktur detail dengan metadata lengkap
 - **TXT**: Laporan yang mudah dibaca
 
-File disimpan di folder `file/` dengan format:
-- `xss_scan_results_[timestamp].json`
-- `xss_scan_results_[timestamp].txt`
+File disimpan di current folder dengan format:
+- `xss-<domain>.txt`
 
 </details>
 
@@ -433,9 +432,7 @@ Proyek ini dilisensikan di bawah **MIT License** - lihat file [LICENSE](LICENSE)
 
 **Butuh bantuan atau menemukan bug?**
 
-[![Issues](https://img.shields.io/badge/Laporkan-Issue-red?style=for-the-badge)](https://github.com/yourusername/cupang/issues)
-[![Email](https://img.shields.io/badge/Email-Kontak-blue?style=for-the-badge)](mailto:your-email@example.com)
-[![Discord](https://img.shields.io/badge/Discord-Gabung-7289DA?style=for-the-badge&logo=discord)](https://discord.gg/yourserver)
+[![Issues](https://img.shields.io/badge/Laporkan-Issue-red?style=for-the-badge)](https://github.com/andknownmaly/cupang/issues)
 
 </div>
 
