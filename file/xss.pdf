@@ -1,0 +1,8 @@
+%PDF-1.4
+1 0 obj
+<<
+/Title (<script>alert(1)</script>)
+/Author (<img src=x onerror=alert(1)>)
+/Subject (XSS Test)
+>>
+endobj

@@ -1,0 +1,19 @@
+# CUPANG - XSS Scanner Requirements
+# Client-side Unsanitized Payload Auto-Nesting Generator
+# Python 3.6+
+
+# HTTP Requests
+requests>=2.31.0
+
+# HTML Parsing
+beautifulsoup4>=4.12.0
+
+# Terminal Colors
+colorama>=0.4.6
+
+# Optional: For better HTML parsing (lxml parser)
+lxml>=4.9.0
+
+# Optional: For better SSL/TLS support
+certifi>=2023.7.22
+urllib3>=2.0.0

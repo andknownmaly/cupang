@@ -1,0 +1,9 @@
+# XSS Payloads - DOM-based
+# Format: one payload per line
+# Use {ID} as placeholder for unique marker
+
+# DOM-based XSS markers
+#xss{ID}
+test<{ID}>
+test'{ID}'
+test"{ID}"

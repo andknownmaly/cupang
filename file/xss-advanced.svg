@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <image xlink:href="x" onerror="alert(document.domain)" />
+  <animate onbegin="alert(1)" attributeName="x" dur="1s" />
+  <set onbegin="alert(1)" attributeName="x" to="0" />
+</svg>
