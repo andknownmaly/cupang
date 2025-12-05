@@ -60,7 +60,6 @@
 <td width="50%">
 
 📊 **Reporting**
-- JSON export
 - TXT reports
 - Real-time console output
 - Detailed vulnerability info
@@ -82,7 +81,6 @@
 🎨 **User Experience**
 - Color-coded output
 - Progress indicators
-- Verbose mode
 - Clean interface
 
 </td>
@@ -102,7 +100,7 @@
 
 1. Clone repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/andknownmaly/cupang.git
 cd xss
 ```
 
