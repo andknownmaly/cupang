@@ -239,7 +239,7 @@ Files stored in current directory with format:
 
 ### Smart Verification
 ```python
-- Unique ID untuk setiap scan session
+- Unique ID for each scan session
 - Payload reflection verification
 - Context-aware detection
 - False positive reduction
@@ -257,8 +257,8 @@ Files stored in current directory with format:
 
 ### Performance Optimization
 ```python
-- Concurrent testing dengan ThreadPoolExecutor
-- Configurable threads dan timeout
+- Concurrent testing with ThreadPoolExecutor
+- Configurable threads and timeout
 - Efficient payload loading
 - Smart retry mechanism
 ```
