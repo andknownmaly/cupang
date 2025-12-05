@@ -140,11 +140,6 @@ python cupang.py https://example.com -H "Cookie: session=abc123"
 python cupang.py https://example.com -H "Authorization: Bearer token123" -H "X-Custom: value"
 ```
 
-### Verbose Mode
-```bash
-python cupang.py https://example.com -v
-```
-
 ### Full Configuration
 ```bash
 python cupang.py https://example.com -a -v --threads 20 --timeout 15
@@ -235,10 +230,9 @@ payloads/
 - Detailed findings dengan context
 
 ### Export Files
-- **JSON**: Detailed structured data dengan metadata lengkap
 - **TXT**: Human-readable report
 
-Files disimpan di current folder dengan format:
+Files stored in current directory with format:
 - `xss-<domain>.txt`
 
 ## 🎨 Features Detail
