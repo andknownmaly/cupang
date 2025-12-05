@@ -60,7 +60,6 @@
 <td width="50%">
 
 📊 **Pelaporan**
-- Export JSON
 - Laporan TXT
 - Output console real-time
 - Info kerentanan detail
@@ -82,7 +81,6 @@
 🎨 **Pengalaman Pengguna**
 - Output dengan kode warna
 - Indikator progress
-- Mode verbose
 - Interface bersih
 
 </td>
