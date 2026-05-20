@@ -109,7 +109,7 @@ cd xss
 pip install -r requirements.txt
 ```
 
-Atau manual:
+Manual Install:
 ```bash
 pip install requests beautifulsoup4 colorama
 ```
